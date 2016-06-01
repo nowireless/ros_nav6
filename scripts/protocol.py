@@ -1,14 +1,20 @@
+import math
+import numpy as np
 from suitcase.structure import Structure
 from suitcase.fields import BaseField
 from suitcase.fields import Magic
 from suitcase.fields import CRCField
 from suitcase.fields import SLInt8
-import math
 
 PACKET_START_CHAR = "!"
 PROTOCOL_FLOAT_LENGTH = 7
+PROTOCOL_UINT16_LENGTH = 4
 CHECKSUM_LENGTH = 2
 TERMINATOR_LENGTH = 2
+
+MPU_INIT_FAILURE = "mpu_init failed!"
+
+UPDATE_RATE_HZ = 50
 
 MSGID_YPR_UPDATE = 'y'
 YPR_UPDATE_MESSAGE_LENGTH = 34
@@ -120,11 +126,35 @@ class ProtocolChecksum(BaseField):
 
 
 class ProtocolUInt16(BaseField):
-    pass
+    def __init__(self, **kwargs):
+        BaseField.__init__(self, **kwargs)
+        self.bytes_required = PROTOCOL_UINT16_LENGTH
+
+    def pack(self, stream):
+        if self._value is not None:
+            stream.write("%04X" % np.uint16(self._value))
+        else:
+            stream.write("0000")
+
+    def unpack(self, data):
+        # Expecting a hexadecimal string
+        self._value = np.sint16(int(data, 16))
 
 
 class ProtocolSInt16(BaseField):
-    pass
+    def __init__(self, **kwargs):
+        BaseField.__init__(self, **kwargs)
+        self.bytes_required = PROTOCOL_UINT16_LENGTH
+
+    def pack(self, stream):
+        if self._value is not None:
+            stream.write("%04X" % np.uint16(self._value))
+        else:
+            stream.write("0000")
+
+    def unpack(self, data):
+        # Expecting a hexadecimal string
+        self._value = np.int16(int(data, 16))
 
 
 class ProtocolFloat(BaseField):
@@ -149,6 +179,7 @@ class ProtocolFloat(BaseField):
             stream.write(" 000.00")
 
     def unpack(self, data):
+        print data
         self._value = float(data)
 
 
@@ -180,7 +211,7 @@ class QuaternionUpdate(Structure):
 
 class StreamCommand(Structure):
     start = Magic("!")
-    type = Magic("S")
+    type = Magic(MSGID_STREAM_CMD)
     stream_type = SLInt8()
     update_rate_hz = ProtocolUInt16()
     checksum = CRCField(ProtocolChecksum(), checksum, 0, -4)
@@ -205,14 +236,41 @@ class StreamResponse(Structure):
     termination = Magic("\r\n")
 
 
+def is_stream_response(data):
+    return len(data) >= 2 and data[1] == MSG_ID_STREAM_RESPONSE
+
+
+def is_ypr_update(data):
+    return len(data) >= 2 and data[1] == MSGID_YPR_UPDATE
+
+
+def is_quaternion_update(data):
+    return len(data) >= 2 and data[1] == MSGID_QUATERNION_UPDATE
+
+
+def is_gyro_update(data):
+    return len(data) >= 2 and data[1] == MSGID_GYRO_UPDATE
+
+
+def is_mpu_init_failure(data):
+    return MPU_INIT_FAILURE in data
+
+
+def make_quaternion_stream_packet():
+    ret = StreamCommand()
+    ret.update_rate_hz = UPDATE_RATE_HZ
+    ret.stream_type = ord(MSGID_QUATERNION_UPDATE)
+    return ret
+
 if __name__ == "__main__":
     y = YPRUpdate()
-    y.yaw = -52.11
+    #y.yaw = -222.11
     #y.pitch = 1
     #y.roll = 2
     #y.compas_heading = 3
 
-    print y.pack()
+    #print y.pack()
     #print float(" 052.00")
-    ypr = YPRUpdate.from_data("!y-052.11 000.00 000.00 000.00A8\r\n")
-    print y.yaw
+    ypr = YPRUpdate.from_data("!y-000.09 006.18-005.11 147.26DF\r\n")
+    #print y.yaw
+    print (make_quaternion_stream_packet().pack())
