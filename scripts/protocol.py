@@ -5,6 +5,7 @@ from suitcase.fields import BaseField
 from suitcase.fields import Magic
 from suitcase.fields import CRCField
 from suitcase.fields import SLInt8
+from suitcase.fields import ULInt8
 
 PACKET_START_CHAR = "!"
 PROTOCOL_FLOAT_LENGTH = 7
@@ -13,8 +14,9 @@ CHECKSUM_LENGTH = 2
 TERMINATOR_LENGTH = 2
 
 MPU_INIT_FAILURE = "mpu_init failed!"
+MPU_FIRMWARE_LOAD_ERROR = "Firmware Load ERROR"
 
-UPDATE_RATE_HZ = 50
+UPDATE_RATE_HZ = 100
 
 MSGID_YPR_UPDATE = 'y'
 YPR_UPDATE_MESSAGE_LENGTH = 34
@@ -138,7 +140,8 @@ class ProtocolUInt16(BaseField):
 
     def unpack(self, data):
         # Expecting a hexadecimal string
-        self._value = np.sint16(int(data, 16))
+
+        self._value = np.uint16(int(data, 16))
 
 
 class ProtocolSInt16(BaseField):
@@ -155,6 +158,21 @@ class ProtocolSInt16(BaseField):
     def unpack(self, data):
         # Expecting a hexadecimal string
         self._value = np.int16(int(data, 16))
+
+
+class ProtocolUInt8(BaseField):
+    def __init__(self, **kwargs):
+        BaseField.__init__(self, **kwargs)
+        self.bytes_required = 1
+
+    def pack(self, stream):
+        if self._value is not None:
+            stream.write("%02X" % np.uint8(self._value))
+        else:
+            stream.write("00")
+
+    def unpack(self, data):
+        self._value = np.int8(ord(data))
 
 
 class ProtocolFloat(BaseField):
@@ -179,7 +197,7 @@ class ProtocolFloat(BaseField):
             stream.write(" 000.00")
 
     def unpack(self, data):
-        print data
+        #print data
         self._value = float(data)
 
 
@@ -204,6 +222,9 @@ class QuaternionUpdate(Structure):
     accel_x = ProtocolSInt16()
     accel_y = ProtocolSInt16()
     accel_z = ProtocolSInt16()
+    mag_x = ProtocolSInt16()
+    mag_y = ProtocolSInt16()
+    mag_z = ProtocolSInt16()
     temp_c = ProtocolFloat()
     checksum = CRCField(ProtocolChecksum(), checksum, 0, -4)
     termination = Magic("\r\n")
@@ -212,8 +233,8 @@ class QuaternionUpdate(Structure):
 class StreamCommand(Structure):
     start = Magic("!")
     type = Magic(MSGID_STREAM_CMD)
-    stream_type = SLInt8()
-    update_rate_hz = ProtocolUInt16()
+    stream_type = ULInt8()
+    update_rate_hz = ProtocolUInt8()
     checksum = CRCField(ProtocolChecksum(), checksum, 0, -4)
     termination = Magic("\r\n")
 
@@ -221,6 +242,8 @@ class StreamCommand(Structure):
 class StreamResponse(Structure):
     start = Magic("!")
     type = Magic("s")
+
+    stream_type = ProtocolUInt8()
 
     gyro_fsr_dps = ProtocolUInt16()
     accel_fsr_g = ProtocolUInt16()
@@ -253,24 +276,41 @@ def is_gyro_update(data):
 
 
 def is_mpu_init_failure(data):
-    return MPU_INIT_FAILURE in data
+    if MPU_INIT_FAILURE in data:
+        return True
+    elif MPU_FIRMWARE_LOAD_ERROR in data:
+        return True
+    return False
 
 
-def make_quaternion_stream_packet():
+def make_quaternion_cmd_packet():
     ret = StreamCommand()
     ret.update_rate_hz = UPDATE_RATE_HZ
     ret.stream_type = ord(MSGID_QUATERNION_UPDATE)
     return ret
 
-if __name__ == "__main__":
-    y = YPRUpdate()
-    #y.yaw = -222.11
-    #y.pitch = 1
-    #y.roll = 2
-    #y.compas_heading = 3
 
-    #print y.pack()
-    #print float(" 052.00")
-    ypr = YPRUpdate.from_data("!y-000.09 006.18-005.11 147.26DF\r\n")
-    #print y.yaw
-    print (make_quaternion_stream_packet().pack())
+def fix_quaternion(q):
+    q2 = map(lambda x:  x/16384.0, q)
+    for i in xrange(0, 3):
+        if q2[i] >= 2:
+            q2[i] -= 4
+
+if __name__ == "__main__":
+    # y = YPRUpdate()
+    # y.yaw = -222.11
+    # y.pitch = 1
+    # y.roll = 2
+    # y.compas_heading = 3
+
+    # print y.pack()
+    # print float(" 052.00")
+    # ypr = YPRUpdate.from_data("!y-000.09 006.18-005.11 147.26DF\r\n")
+    # print y.yaw
+    # print (make_quaternion_cmd_packet().pack())
+    # q = QuaternionUpdate.from_data("!q22C8DF8A2AC8FE90D2DADAB2E5D6FEDD021F004A 023.554C\r\n")
+    # print "22C8", int("22C8", 16), np.uint16(int("22C8", 16))
+    # print q.temp_c
+
+    s = StreamResponse.from_data("!sq07D000020064-081.38228BDF782AEAFE80000250\r\n")
+    print s
