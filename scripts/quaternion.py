@@ -55,7 +55,7 @@ def handle_quaternion(update):
     return q, g, ypr, linear_accel
 
 
-def calculate_angualar_velocity(now, last, dt):
+def calculate_angular_velocity(now, last, dt):
     assert len(now) == 3
     assert len(last) == 3
     assert dt == 0.0
@@ -68,5 +68,4 @@ if __name__ == "__main__":
     now_update = protocol.QuaternionUpdate.from_data("!q3EFEFA44FF68F64602BEF58A3B52FE97FF99FE19 026.1052\r\n")
     now = handle_quaternion(now_update)
 
-    # Calculate Quaternions
-    print calculate_angualar_velocity(now[2], last[2], 1.0/100.0)
+    print calculate_angular_velocity(now[2], last[2], 1.0/100.0)
