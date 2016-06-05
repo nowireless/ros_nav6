@@ -295,6 +295,8 @@ def fix_quaternion(q):
     for i in xrange(0, 3):
         if q2[i] >= 2:
             q2[i] -= 4
+    return q2
+
 
 if __name__ == "__main__":
     # y = YPRUpdate()
