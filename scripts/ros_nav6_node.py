@@ -4,18 +4,18 @@ import rospy
 import select
 import sys
 import time
+import math
 
 import protocol
+import quaternion
 
 from serial import Serial
 from serial import SerialException
 from suitcase.exceptions import SuitcaseParseError
 
-from std_msgs.msg import Header
-from geometry_msgs.msg import Quaternion
-from geometry_msgs.msg import Vector3
 from sensor_msgs.msg import Imu
 from sensor_msgs.msg import MagneticField
+from sensor_msgs.msg import Temperature
 
 
 class Nav6Node:
@@ -23,8 +23,11 @@ class Nav6Node:
         # Setup ros
         rospy.init_node('nav6', anonymous=True)
         frame_name = rospy.get_param('frame name', 'odom_frame')
-        self.pub = rospy.Publisher(frame_name, Imu, queue_size=10)
-
+        imu_temp_name = rospy.get_param('imu temp name', 'imu_temp')
+        mag_name = rospy.get_param('mag name', 'imu_mag')
+        self.imu_pub = rospy.Publisher(frame_name, Imu, queue_size=10)
+        self.imu_temp_pub = rospy.Publisher(imu_temp_name, Temperature, queue_size= 10)
+        self.mag_pub = rospy.Publisher(mag_name, MagneticField, queue_size=10)
         # Setup Serial Port
         self.port = Serial()
 
@@ -34,8 +37,10 @@ class Nav6Node:
         self.port.timeout = rospy.get_param('timeout', 5)
 
         self.accel_fsr_g = None
-
+        self.last_ypr = None
         self.imu_msg = Imu()
+        self.mag_msg = MagneticField()
+        self.imu_temp_msg = Temperature()
 
     def enable_quaternion_mode(self):
         rospy.loginfo("Enabling Quaternion Mode")
@@ -63,7 +68,6 @@ class Nav6Node:
                 good = True
             elif protocol.is_mpu_init_failure(data):
                 rospy.logfatal("MPU init failure")
-                sys.exit(-4)
 
             if (time.time()-last) > 3:
                 rospy.loginfo("Resending Quaternion CMD")
@@ -71,7 +75,7 @@ class Nav6Node:
                 self.port.write(cmd.pack())
                 last = time.time()
 
-    rospy.loginfo("Now in Quaternion Mode")
+        rospy.loginfo("Now in Quaternion Mode")
 
     def publish(self):
         rate = rospy.Rate(150)
@@ -91,7 +95,7 @@ class Nav6Node:
 
                 while not rospy.is_shutdown():
                     data = self.port.readline();
-                    rospy.loginfo(data.replace("\r\n", ""))
+                    rospy.logdebug(data.replace("\r\n", ""))
 
                     if len(data) == 0:
                         rospy.logwarn("No response")
@@ -99,6 +103,7 @@ class Nav6Node:
 
                     if protocol.is_stream_response(data):
                         rospy.loginfo("Received Stream Response")
+                        self.handle_stream_response(data)
                     elif protocol.is_quaternion_update(data):
                         rospy.logdebug("Received Quaternion Update")
                         self.handle_quaternion_update(data)
@@ -117,13 +122,48 @@ class Nav6Node:
 
     def handle_quaternion_update(self, data):
         try:
-            q_update = protocol.QuaternionUpdate.from_data(data)
+            #print data
+            update = protocol.QuaternionUpdate.from_data(data)
+            q, g, ypr, linear_accel = quaternion.handle_quaternion(update)
 
-            # Fix Quaternion Values
-            q = [q_update.q1, q_update.q2, q_update.q3, q_update.q4]
-            protocol.fix_quaternion(q)
+            if self.last_ypr is None:
+                self.last_ypr = ypr
+                return
 
-            # Fix linear acceleration
+            angular_vel = quaternion.calculate_angular_velocity(ypr, self.last_ypr)
+
+            self.imu_msg.header.stamp = rospy.Time.now()
+            self.imu_msg.orientation.w = q[0]
+            self.imu_msg.orientation.x = q[1]
+            self.imu_msg.orientation.y = q[2]
+            self.imu_msg.orientation.z = q[3]
+
+            self.imu_msg.linear_acceleration.x = linear_accel[0]
+            self.imu_msg.linear_acceleration.y = linear_accel[1]
+            self.imu_msg.linear_acceleration.z = linear_accel[2]
+            self.imu_msg.linear_acceleration_covariance = [0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+            self.imu_msg.angular_velocity.x = angular_vel[0]
+            self.imu_msg.angular_velocity.y = angular_vel[1]
+            self.imu_msg.angular_velocity.z = angular_vel[2]
+            self.imu_msg.angular_velocity_covariance = [0, 0, 0, 0, 0, 0, 0, 0, 0]
+            self.imu_pub.publish(self.imu_msg)
+
+            # Magnetic Field
+            m_x = update.mag_x * math.cos(ypr[1]) + update.mag_z*math.cos(ypr[1])
+            m_y = update.mag_x * math.sin(ypr[2]) * math.sin(ypr[1]) + update.mag_y * math.cos(ypr[2]) - update.mag_z * math.sin(ypr[2]) * math.cos(ypr[1])
+
+            self.mag_msg.header.stamp = rospy.Time.now()
+            self.mag_msg.magnetic_field.x = m_x
+            self.mag_msg.magnetic_field.y = m_y
+            self.mag_msg.magnetic_field.z = 0
+            self.mag_msg.magnetic_field_covariance = [0, 0, 0, 0, 0, 0, 0, 0, 0]
+            self.mag_pub.publish(self.mag_msg)
+            # Imu Temp in C
+            temp_c = update.temp_c
+            self.imu_temp_msg.header.stamp = rospy.Time.now()
+            self.imu_temp_msg.temperature = temp_c
+            self.imu_temp_pub.publish(self.imu_temp_msg)
 
         except SuitcaseParseError as e:
             rospy.logwarn("Could not parse: %s", e)
@@ -132,6 +172,7 @@ class Nav6Node:
         try:
             response = protocol.StreamResponse.from_data(data)
             self.accel_fsr_g = response.accel_fsr_g
+            print response.flags
         except SuitcaseParseError as e:
             rospy.logwarn("Could not parse: %s", e)
 
