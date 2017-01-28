@@ -22,7 +22,7 @@ class Nav6Node:
     def __init__(self):
         # Setup ros
         rospy.init_node('nav6', anonymous=True)
-        frame_name = rospy.get_param('frame name', 'odom_frame')
+        frame_name = rospy.get_param('frame name', 'imu')
         imu_temp_name = rospy.get_param('imu temp name', 'imu_temp')
         mag_name = rospy.get_param('mag name', 'imu_mag')
         self.imu_pub = rospy.Publisher(frame_name, Imu, queue_size=10)
@@ -130,8 +130,10 @@ class Nav6Node:
                 self.last_ypr = ypr
                 return
 
-            angular_vel = quaternion.calculate_angular_velocity(ypr, self.last_ypr)
-
+            #angular_vel = quaternion.calculate_angular_velocity(ypr, self.last_ypr)
+            angular_vel = [0,0,0]
+            
+            self.imu_msg.header.frame_id = "imu"
             self.imu_msg.header.stamp = rospy.Time.now()
             self.imu_msg.orientation.w = q[0]
             self.imu_msg.orientation.x = q[1]
