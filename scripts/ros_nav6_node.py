@@ -131,7 +131,7 @@ class Nav6Node:
             #angular_vel = quaternion.calculate_angular_velocity(ypr, self.last_ypr)
             angular_vel = [0,0,0]
             
-            self.imu_msg.header.frame_id = "imu"
+            self.imu_msg.header.frame_id = self.frame_name
             self.imu_msg.header.stamp = rospy.Time.now()
             self.imu_msg.orientation.w = q[0]
             self.imu_msg.orientation.x = q[1]
@@ -154,6 +154,7 @@ class Nav6Node:
             m_y = update.mag_x * math.sin(ypr[2]) * math.sin(ypr[1]) + update.mag_y * math.cos(ypr[2]) - update.mag_z * math.sin(ypr[2]) * math.cos(ypr[1])
 
             self.mag_msg.header.stamp = rospy.Time.now()
+            self.mag_msg.header.frame_id = self.frame_name
             self.mag_msg.magnetic_field.x = m_x
             self.mag_msg.magnetic_field.y = m_y
             self.mag_msg.magnetic_field.z = 0
@@ -162,9 +163,9 @@ class Nav6Node:
             # Imu Temp in C
             temp_c = update.temp_c
             self.imu_temp_msg.header.stamp = rospy.Time.now()
+            self.imu_temp_msg.header.frame_id = self.frame_name
             self.imu_temp_msg.temperature = temp_c
             self.imu_temp_pub.publish(self.imu_temp_msg)
-
         except SuitcaseParseError as e:
             rospy.logwarn("Could not parse: %s", e)
 
