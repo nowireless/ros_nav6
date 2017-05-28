@@ -62,8 +62,9 @@ class Nav6Node:
         self.port.write(cmd.pack())
 
         good = False
+        quaternion_mode = False
         last = time.time()
-        while not good:
+        while not (good and quaternion_mode):
             data = self.port.readline()
             if len(data) == 0:
                 rospy.logwarn("Empty response")
@@ -73,6 +74,9 @@ class Nav6Node:
                 self.handle_stream_response(data)
                 rospy.loginfo("accel_fsr_g: %i", self.accel_fsr_g)
                 good = True
+            elif protocol.is_quaternion_update(data):
+                rospy.loginfo("Received Quaternion update")
+                quaternion_mode = True
             elif protocol.is_mpu_init_failure(data):
                 rospy.logfatal("MPU init failure")
 
@@ -92,10 +96,6 @@ class Nav6Node:
             rospy.logfatal("Could not open serial port %s, reason: %s", self.port.port, e)
             sys.exit(-2)
 
-        # Not working at the moment
-        # cmd = protocol.make_quaternion_stream_packet()
-        # self.port.flush()
-        # self.port.write(cmd.pack())
         try:
             try:
                 self.enable_quaternion_mode()
