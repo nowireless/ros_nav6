@@ -131,7 +131,7 @@ class Nav6Node:
                     self.pub_cal_status();
             except SerialException as e:
                 rospy.logfatal("Serial Exception: %s", e)
-                sys.exit(-3)
+                sys.exit(-3) # Should this be rospy.signal
         except (rospy.ROSInterruptException, select.error) as e:
             rospy.loginfo("Exiting")
             self.port.close()
