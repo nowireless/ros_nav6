@@ -22,12 +22,10 @@ class Nav6Node:
     def __init__(self):
         # Setup ros
         rospy.init_node('nav6', anonymous=True)
-        frame_name = rospy.get_param('frame name', 'imu')
-        imu_temp_name = rospy.get_param('imu temp name', 'imu_temp')
-        mag_name = rospy.get_param('mag name', 'imu_mag')
-        self.imu_pub = rospy.Publisher(frame_name, Imu, queue_size=10)
-        self.imu_temp_pub = rospy.Publisher(imu_temp_name, Temperature, queue_size= 10)
-        self.mag_pub = rospy.Publisher(mag_name, MagneticField, queue_size=10)
+        self.frame_name = "imu"
+        self.imu_pub = rospy.Publisher("/imu", Imu, queue_size=10)
+        self.imu_temp_pub = rospy.Publisher("/imu_tempature", Temperature, queue_size= 10)
+        self.mag_pub = rospy.Publisher("/imu_compas", MagneticField, queue_size=10)
         # Setup Serial Port
         self.port = Serial()
 
