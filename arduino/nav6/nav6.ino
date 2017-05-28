@@ -44,10 +44,7 @@ extern "C" {
 #include <inv_mpu_dmp_motion_driver.h>
 }
 #include <IMUProtocol.h>
-#include <HMC5883LCalibratable.h>
 #include "version.h"
-
-HMC5883LCalibratable compass;
 
 #define SDA_PIN A4
 #define SCL_PIN A5
@@ -57,10 +54,6 @@ HMC5883LCalibratable compass;
 #define cbi(sfr, bit) (_SFR_BYTE(sfr) &= ~_BV(bit))
 #endif
 
-volatile boolean compass_data_ready = false;
-void compassDataAvailable() {
-  compass_data_ready = true;
-}
 
 void setup() {
 
@@ -120,39 +113,6 @@ void setup() {
   Serial.print(     F("Free Memory:  ") );
   Serial.println(   freeMemory() );
 
-  // Digital Compass Initialization
-
-  if ( compass.testConnection() ) {
-
-    compass.initialize();
-    uint8_t gain = compass.getGain();
-    Serial.print(   F("Calibrating Compass...") );
-    Serial.flush();
-
-    delay(10);
-
-    if ( compass.calibrate(gain, 100) ) {
-      Serial.println(F("Success"));
-    }
-    else {
-      Serial.println(F("Failed"));
-    }
-
-    compass.initialize();
-    // Set Compass to "Continuous" mode
-    // This makes reading data more efficient, at the expense of some
-    // additional current draw.
-    // enable the compass interrupt
-    attachInterrupt(1, compassDataAvailable, RISING);
-
-    // Initiate reading from magnetometer, this should trigger an interrupt.
-    // The mode neet to be sets to continuous before and after
-    // the initial reading.
-    compass.setMode(HMC5883L_MODE_CONTINUOUS);
-    compass.getHeadingX();
-    compass.setMode(HMC5883L_MODE_CONTINUOUS);
-  }
-
   // MPU-6050 Initialization
 
   // Initialize the MPU:
@@ -173,8 +133,7 @@ void setup() {
       //boolean gyro_ok, accel_ok;
       //run_mpu_self_test(gyro_ok,accel_ok);
       enable_mpu();
-    }
-    else {
+    } else {
       digitalWrite(STATUS_LED, LOW);
       Serial.print(F("Failed"));
       mpu_force_reset();
@@ -215,17 +174,6 @@ float yaw_accumulator = 0.0;
 float quaternion_accumulator[4] = { 0.0, 0.0, 0.0, 0.0 };
 float calibrated_yaw_offset = 0.0;
 float calibrated_quaternion_offset[4] = { 0.0, 0.0, 0.0, 0.0 };
-
-/******************************************
-  Magnetometer State
-******************************************/
-
-int16_t mag_x = 0;
-int16_t mag_y = 0;
-int16_t mag_z = 0;
-
-float compass_heading_radians = 0.0;
-float compass_heading_degrees = 0.0;
 
 /****************************************
   Gyro/Accel/DMP State
@@ -300,41 +248,7 @@ char protocol_buffer[64];
 
 void loop() {
 
-  // Read compass heading data if it has been updated recently.
-
-  if ( compass_data_ready ) {
-
-    if ( ( update_type == MSGID_QUATERNION_UPDATE ) || ( update_type == MSGID_GYRO_UPDATE ) ) {
-
-      compass.getValues(&mag_x, &mag_y, &mag_z);
-
-      mpu_get_temperature(&curr_mpu_temp, &sensor_timestamp);
-      temp_centigrade = (float)curr_mpu_temp;
-      temp_centigrade /= 65536.0;
-    }
-    else {
-
-      // Read latest heading from compass
-      // Note that the compass heading is tilt compensated based upon
-      // previous pitch/roll readings from the MPU
-      compass_heading_radians = compass.compassHeadingTiltCompensatedRadians(-ypr[1], ypr[2]);
-      compass_heading_degrees = compass_heading_radians * radians_to_degrees;
-
-      // Adjust compass for board orientation,
-      // and modify range from -180-180 to
-      // 0-360 degrees
-
-      compass_heading_degrees -= 90.0;
-      if ( compass_heading_degrees < 0 ) {
-        compass_heading_degrees += 360;
-      }
-
-    }
-    compass_data_ready = false;
-  }
-
   // If the MPU Interrupt occurred, read the fifo and process the data
-
   if (hal.new_gyro && hal.dmp_on) {
 
     short gyro[3], accel[3], sensors;
@@ -432,23 +346,21 @@ void loop() {
         int num_bytes = IMUProtocol::encodeQuaternionUpdate(  protocol_buffer,
                         quat[0] >> 16, quat[1] >> 16, quat[2] >> 16, quat[3] >> 16,
                         accel[0], accel[1], accel[2],
-                        mag_x, mag_y, mag_z,
+                        0, 0, 0,
                         temp_centigrade);
         Serial.write((unsigned char *)protocol_buffer, num_bytes);
-      }
-      else if ( update_type == MSGID_GYRO_UPDATE ) {
+      } else if ( update_type == MSGID_GYRO_UPDATE ) {
 
         // Update client with raw sensor data only
 
         int num_bytes = IMUProtocol::encodeGyroUpdate(  protocol_buffer,
                         gyro[0], gyro[1], gyro[2],
                         accel[0], accel[1], accel[2],
-                        mag_x, mag_y, mag_z,
+                        0, 0, 0,
                         temp_centigrade);
         Serial.write((unsigned char *)protocol_buffer, num_bytes);
 
-      }
-      else {
+      } else {
 
         // Send a Yaw/Pitch/Roll/Heading update
 
@@ -531,11 +443,10 @@ void loop() {
         world_linear_acceleration_y = q_final[2];
         world_linear_acceleration_z = q_final[3];
 
-        int num_bytes = IMUProtocol::encodeYPRUpdate(protocol_buffer, x, y, z, compass_heading_degrees);
+        int num_bytes = IMUProtocol::encodeYPRUpdate(protocol_buffer, x, y, z, 0);
         Serial.write((unsigned char *)protocol_buffer, num_bytes);
       }
-    }
-    else {
+    } else {
 
       /* The following debug print outs are useful
          if DMP fifo streaming is not working or
