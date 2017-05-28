@@ -247,7 +247,7 @@ boolean update_type = MSGID_QUATERNION_UPDATE;
 char protocol_buffer[64];
 
 void loop() {
-
+ 
   // If the MPU Interrupt occurred, read the fifo and process the data
   if (hal.new_gyro && hal.dmp_on) {
 
