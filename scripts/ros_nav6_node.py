@@ -16,6 +16,7 @@ from suitcase.exceptions import SuitcaseParseError
 from sensor_msgs.msg import Imu
 from sensor_msgs.msg import MagneticField
 from sensor_msgs.msg import Temperature
+from std_msgs.msg import Bool
 
 
 class Nav6Node:
@@ -26,6 +27,8 @@ class Nav6Node:
         self.imu_pub = rospy.Publisher("/imu", Imu, queue_size=10)
         self.imu_temp_pub = rospy.Publisher("/imu_tempature", Temperature, queue_size= 10)
         self.mag_pub = rospy.Publisher("/imu_compas", MagneticField, queue_size=10)
+        self.cal_pub = rospy.Publisher("/imu_calibrated", Bool, queue_size=10)
+
         # Setup Serial Port
         self.port = Serial()
 
@@ -33,6 +36,8 @@ class Nav6Node:
         self.port.baudrate = rospy.get_param("buadrate", 57600)
         self.port.port = rospy.get_param('port', '/dev/ttyACM0')
         self.port.timeout = rospy.get_param('timeout', 5)
+
+        self.calibrated = False;
 
         self.accel_fsr_g = None
         self.last_ypr = None
@@ -86,6 +91,8 @@ class Nav6Node:
                 self.port.write(cmd.pack())
                 last = time.time()
 
+            self.pub_cal_status()
+
         rospy.loginfo("Now in Quaternion Mode")
 
     def publish(self):
@@ -115,10 +122,13 @@ class Nav6Node:
                         rospy.logdebug("Received Quaternion Update")
                         self.handle_quaternion_update(data)
                     elif protocol.is_mpu_init_failure(data):
+                        # Is this case needed?
                         rospy.logfatal("MPU Init failure")
                     else:
                         rospy.logwarn("Invalid message received: %s", data)
                         continue
+
+                    self.pub_cal_status();
             except SerialException as e:
                 rospy.logfatal("Serial Exception: %s", e)
                 sys.exit(-3)
@@ -128,6 +138,9 @@ class Nav6Node:
             sys.exit(0)
 
     def handle_quaternion_update(self, data):
+        if not self.calibrated:
+            rospy.loginfo("Waiting for calibration")
+            return
         try:
             #print data
             update = protocol.QuaternionUpdate.from_data(data)
@@ -182,9 +195,17 @@ class Nav6Node:
         try:
             response = protocol.StreamResponse.from_data(data)
             self.accel_fsr_g = response.accel_fsr_g
-            print response.flags
+            rospy.loginfo("Stream Response flags: %i", response.flags)
+            if response.flags == 2:
+                rospy.loginfo("IMU Calibrated")
+                self.calibrated = True
         except SuitcaseParseError as e:
             rospy.logwarn("Could not parse: %s", e)
+
+    def pub_cal_status(self):
+        msg = Bool()
+        msg.data = self.calibrated
+        self.cal_pub.publish(msg)
 
 if __name__ == "__main__":
     node = Nav6Node()
