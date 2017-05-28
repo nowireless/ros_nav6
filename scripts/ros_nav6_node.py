@@ -43,10 +43,19 @@ class Nav6Node:
     def enable_quaternion_mode(self):
         rospy.loginfo("Enabling Quaternion Mode")
 
-        rospy.loginfo("Waiting for Arduino")
-        time.sleep(3) # Don't like this
-        rospy.loginfo("Done Waiting for Arduino")
+        rospy.loginfo("Resetting Arduino")
+        self.port.setDTR(False)
+        time.sleep(1)
 
+        # https://stackoverflow.com/questions/21073086/wait-on-arduino-auto-reset-using-pyserial
+        # toss any data already received, see
+        # http://pyserial.sourceforge.net/pyserial_api.html#serial.Serial.flushInput
+        self.port.flushInput()
+        self.port.setDTR(True)
+        rospy.loginfo("Arduino has been reset")
+
+        # Wait for the arduino to comeup
+        time.sleep(1)
         self.port.flush()
 
         cmd = protocol.make_quaternion_cmd_packet()
