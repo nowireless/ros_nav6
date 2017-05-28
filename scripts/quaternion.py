@@ -26,14 +26,14 @@ def handle_quaternion(update):
     for i in xrange(0, 4):
         if q[i] >= 2:
             q[i] -= 4
-    print "Quaternion:", q
+    # print "Quaternion:", q
 
     # Calculate the gravity vector
     g = [0, 0, 0]
     g[0] = 2 * (q[1]*q[3] - q[0]*q[2])
     g[1] = 2 * (q[0]*q[1] + q[2]*q[3])
     g[2] = q[0]*q[0] - q[1]*q[1] - q[2]*q[2] + q[3]*q[3]
-    print "Gravity:", g
+    # print "Gravity:", g
 
     # YPR in radians
     ypr = [0, 0, 0]
@@ -42,16 +42,16 @@ def handle_quaternion(update):
     ypr[1] = math.atan(g[0] / math.sqrt(g[1]**2 + g[2]**2))
     ypr[2] = math.atan(g[1] / math.sqrt(g[0]**2 + g[2]**2))
 
-    print "YPR:", ypr
+    # print "YPR:", ypr
 
     # Calculate acceleration
     a = [update.accel_x, update.accel_y, update.accel_z]
     a = map(lambda x: float(x) / (32768.0 / accel_fsr_g), a)
-    print "Raw Acceleration:", a
+    # print "Raw Acceleration:", a
 
     # Calculate Linear Acceleration with gravoty removed
     linear_accel = map(lambda x: x*LITTLE_G, [a[0] - g[0], a[1] - g[1], a[2] - g[2]])
-    print "Linear Acceleration:", linear_accel
+    # print "Linear Acceleration:", linear_accel
     return q, g, ypr, linear_accel
 
 
